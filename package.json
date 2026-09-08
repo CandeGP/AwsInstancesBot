@@ -1,0 +1,18 @@
+{
+  "name": "aws-instances-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Discord bot for managing game servers on AWS.",
+  "scripts": {
+    "dev": "commandkit dev",
+    "build": "commandkit build",
+    "start": "commandkit start"
+  },
+  "dependencies": {
+    "commandkit": "latest",
+    "discord.js": "latest"
+  },
+  "devDependencies": {
+    "typescript": "latest"
+  }
+}
