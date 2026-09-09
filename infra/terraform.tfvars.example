@@ -1,5 +1,7 @@
 aws_region          = "us-east-1"
 project_name        = "aws-instances-bot"
-instance_type       = "m5.large"
-root_volume_size_gb = 30
+instance_type       = "t3.micro"
+root_volume_size_gb = 20
 ssh_cidr_blocks     = []
+auto_stop_enabled   = true
+auto_stop_schedule  = "rate(15 minutes)"

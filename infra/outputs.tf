@@ -12,3 +12,9 @@ output "security_group_id" {
   description = "Security group ID attached to the game server."
   value       = aws_security_group.game_server.id
 }
+
+output "auto_stop_lambda_name" {
+  description = "Name of the AutoStop Lambda."
+  value       = aws_lambda_function.auto_stop.function_name
+}
+

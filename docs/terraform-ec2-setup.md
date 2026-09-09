@@ -645,7 +645,93 @@ Cuando se agregue la instalacion de Project Zomboid:
 4. Crear una instancia de prueba o reemplazar la existente conscientemente.
 5. Revisar el log de bootstrap.
 6. Probar los puertos del servidor.
-7. Implementar AutoStop y AutoStart con Lambda y CloudWatch.
+7. Implementar AutoStop con Lambda y EventBridge.
 8. Integrar el bot de Discord con las operaciones de EC2.
 
-Esta configuracion es la base de la Fase 2. Todavia no implementa AutoStop, AutoStart, CloudWatch, Lambda ni la instalacion automatica de Project Zomboid.
+Esta configuracion es la base de la Fase 2. Ya incluye una primera version de AutoStop con Lambda y EventBridge, pero todavia no instala Project Zomboid ni usa una metrica real de jugadores.
+
+## 23. AutoStop con Lambda
+
+La configuracion actual incorpora una unica automatizacion:
+
+```text
+EventBridge schedule
+  |
+  v
+Lambda AutoStop
+  |
+  v
+EC2 y metricas CloudWatch
+```
+
+Los archivos son:
+
+```text
+lambdas/auto_stop.py
+```
+
+Terraform comprime la funcion como ZIP mediante `archive_file` y crea:
+
+- Una funcion Lambda.
+- Un rol IAM para la funcion.
+- Permisos para consultar EC2 y CloudWatch.
+- Una regla EventBridge para AutoStop.
+- Permiso para que EventBridge invoque la Lambda.
+
+La regla esta desactivada por defecto:
+
+```hcl
+auto_stop_enabled = false
+```
+
+Esto evita que una prueba inicial detenga la instancia inesperadamente.
+
+### Como funciona AutoStop
+
+AutoStop busca instancias con el tag:
+
+```text
+AutoStop = true
+```
+
+Solo revisa instancias en estado `running`. Consulta `CPUUtilization` en CloudWatch durante los ultimos 30 minutos y detiene la instancia si todos los puntos disponibles estan por debajo del umbral configurado, actualmente 5 por ciento.
+
+Esta es una aproximacion temporal de inactividad. CPU baja no demuestra que no haya jugadores conectados. Cuando el servidor de Project Zomboid tenga una metrica real de jugadores, AutoStop debe cambiarse para usar esa metrica o una comprobacion directa del proceso del juego.
+
+### Activar las reglas
+
+Para una prueba controlada, crea un archivo local `infra/terraform.tfvars` y activa la regla:
+
+```hcl
+auto_stop_enabled = true
+```
+
+La instancia recibira `AutoStop=true` y la regla se habilitara. La expresion predeterminada es `rate(15 minutes)`, por lo que EventBridge intentara ejecutar la Lambda cada 15 minutos. El tiempo real de ejecucion puede variar ligeramente.
+
+No se implementa AutoStart en esta etapa. La instancia se encendera manualmente o desde el futuro comando de Discord.
+
+Primero se debe probar la Lambda manualmente desde la consola de AWS usando un evento `{}`. No actives AutoStop hasta comprobar que la instancia correcta tiene el tag y que el umbral de CPU representa el comportamiento esperado.
+
+### Scripts de despliegue
+
+El script:
+
+```powershell
+.\scripts\deploy-infra.ps1
+```
+
+ejecuta `terraform init`, `fmt`, `validate` y genera un plan. No aplica cambios.
+
+Para aplicar exactamente el plan generado:
+
+```powershell
+.\scripts\deploy-infra.ps1 -Apply
+```
+
+Para destruir los recursos administrados por Terraform se requiere una confirmacion explicita:
+
+```powershell
+.\scripts\destroy-infra.ps1 -ConfirmDestroy
+```
+
+Nunca se debe ejecutar el script de destruccion sin revisar antes el plan.

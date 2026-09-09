@@ -8,3 +8,6 @@ dist/
 crash.log
 *.tfvars
 !terraform.tfvars.example
+lambdas/*.zip
+tfplan
+__pycache__/

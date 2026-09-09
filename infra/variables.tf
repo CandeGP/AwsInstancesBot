@@ -27,3 +27,27 @@ variable "ssh_cidr_blocks" {
   type        = list(string)
   default     = []
 }
+
+variable "auto_stop_enabled" {
+  description = "Enables the scheduled AutoStop rule."
+  type        = bool
+  default     = true
+}
+
+variable "auto_stop_schedule" {
+  description = "EventBridge schedule for the AutoStop check, in UTC."
+  type        = string
+  default     = "rate(15 minutes)"
+}
+
+variable "auto_stop_cpu_threshold" {
+  description = "Average CPU percentage at or below which an instance is considered idle."
+  type        = number
+  default     = 5
+}
+
+variable "auto_stop_idle_minutes" {
+  description = "How long CPU must remain below the threshold before stopping."
+  type        = number
+  default     = 30
+}

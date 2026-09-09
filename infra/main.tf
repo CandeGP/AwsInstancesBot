@@ -6,11 +6,24 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.4"
+    }
   }
 }
 
 provider "aws" {
   region = var.aws_region
+}
+
+# Important
+# this Data block is used to create a zip file from the auto_stop.py script, which is then used to create the Lambda function.
+data "archive_file" "auto_stop" {
+  type        = "zip"
+  source_file = "${path.module}/../lambdas/auto_stop.py"
+  output_path = "${path.module}/../lambdas/auto_stop.zip"
 }
 
 data "aws_vpc" "default" {
@@ -112,13 +125,12 @@ resource "aws_iam_instance_profile" "ec2" {
 }
 
 resource "aws_instance" "game_server" {
-  ami                         = data.aws_ami.ubuntu.id
-  instance_type               = var.instance_type
-  subnet_id                   = data.aws_subnets.default.ids[0]
-  vpc_security_group_ids      = [aws_security_group.game_server.id]
-  associate_public_ip_address = true
-  iam_instance_profile        = aws_iam_instance_profile.ec2.name
-  user_data                   = file("${path.module}/../scripts/ec2-user-data.sh")
+  ami                    = data.aws_ami.ubuntu.id
+  instance_type          = var.instance_type
+  subnet_id              = data.aws_subnets.default.ids[0]
+  vpc_security_group_ids = [aws_security_group.game_server.id]
+  iam_instance_profile   = aws_iam_instance_profile.ec2.name
+  user_data              = file("${path.module}/../scripts/ec2-user-data.sh")
 
   root_block_device {
     volume_type           = "gp3"
@@ -128,8 +140,100 @@ resource "aws_instance" "game_server" {
   }
 
   tags = {
-    Name    = "${var.project_name}-game-server"
-    Project = var.project_name
-    Role    = "game-server"
+    Name     = "${var.project_name}-game-server"
+    Project  = var.project_name
+    Role     = "game-server"
+    AutoStop = tostring(var.auto_stop_enabled)
   }
 }
+
+resource "aws_iam_role" "automation" {
+  name = "${var.project_name}-automation-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "automation" {
+  name = "${var.project_name}-automation-policy"
+  role = aws_iam_role.automation.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeInstances",
+          "ec2:StartInstances",
+          "ec2:StopInstances"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:GetMetricStatistics"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:*:*:*"
+      }
+    ]
+  })
+}
+
+resource "aws_lambda_function" "auto_stop" {
+  function_name    = "${var.project_name}-auto-stop"
+  role             = aws_iam_role.automation.arn
+  handler          = "auto_stop.lambda_handler"
+  runtime          = "python3.12"
+  filename         = data.archive_file.auto_stop.output_path
+  source_code_hash = data.archive_file.auto_stop.output_base64sha256
+  timeout          = 30
+
+  environment {
+    variables = {
+      PROJECT_NAME  = var.project_name
+      CPU_THRESHOLD = tostring(var.auto_stop_cpu_threshold)
+      IDLE_MINUTES  = tostring(var.auto_stop_idle_minutes)
+    }
+  }
+}
+
+resource "aws_cloudwatch_event_rule" "auto_stop" {
+  name                = "${var.project_name}-auto-stop"
+  description         = "Checks tagged instances and stops those with low CPU usage."
+  schedule_expression = var.auto_stop_schedule
+  state               = var.auto_stop_enabled ? "ENABLED" : "DISABLED"
+}
+
+resource "aws_cloudwatch_event_target" "auto_stop" {
+  rule      = aws_cloudwatch_event_rule.auto_stop.name
+  target_id = "auto-stop-lambda"
+  arn       = aws_lambda_function.auto_stop.arn
+}
+
+resource "aws_lambda_permission" "auto_stop" {
+  statement_id  = "AllowEventBridgeAutoStop"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.auto_stop.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.auto_stop.arn
+}
+
