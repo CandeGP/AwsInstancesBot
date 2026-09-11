@@ -70,7 +70,15 @@ resource "aws_security_group" "game_server" {
   }
 
   ingress {
-    description = "Project Zomboid connection"
+    description = "Project Zomboid game port"
+    from_port   = 16261
+    to_port     = 16261
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Project Zomboid game port"
     from_port   = 16261
     to_port     = 16261
     protocol    = "udp"
@@ -78,10 +86,10 @@ resource "aws_security_group" "game_server" {
   }
 
   ingress {
-    description = "Project Zomboid player ports"
+    description = "Project Zomboid query port"
     from_port   = 16262
-    to_port     = 16272
-    protocol    = "tcp"
+    to_port     = 16262
+    protocol    = "udp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 

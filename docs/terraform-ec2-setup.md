@@ -15,7 +15,7 @@ La configuracion de Terraform prepara una instancia EC2 para alojar el servidor 
 
 Terraform permite describir estos recursos como codigo. En lugar de crear cada recurso manualmente desde la consola de AWS, Terraform usa la API de AWS para crearlos y mantener su estado.
 
-> Esta configuracion todavia no instala Project Zomboid. El script de instalacion se agregara despues de validar los comandos oficiales para Linux.
+> El bootstrap instala SteamCMD y Project Zomboid en una instancia nueva. Debe validarse primero en una EC2 de prueba porque la instalacion descarga software externo y puede tardar varios minutos.
 
 ## 2. Estructura utilizada
 
@@ -174,9 +174,10 @@ Define las variables que utiliza la infraestructura:
 | --- | --- | --- |
 | `aws_region` | `us-east-1` | Region donde se crean los recursos |
 | `project_name` | `aws-instances-bot` | Prefijo para nombres y tags |
-| `instance_type` | `t3.micro` | Tipo de instancia EC2 por defecto |
-| `root_volume_size_gb` | `20` | Tamano del disco raiz |
+| `instance_type` | `t3.medium` | Tipo de instancia EC2 por defecto; 2 vCPU y 4 GiB de memoria |
+| `root_volume_size_gb` | `40` | Tamano del disco raiz |
 | `ssh_cidr_blocks` | `[]` | Redes autorizadas para SSH |
+| `auto_stop_enabled` | `false` | AutoStop desactivado durante la validacion inicial |
 
 `ssh_cidr_blocks` esta vacia intencionalmente. Eso significa que SSH no se abre por defecto. Si se necesitara acceso SSH temporal, se debe usar una IP concreta, por ejemplo:
 
@@ -191,20 +192,20 @@ No se debe usar `0.0.0.0/0` para SSH en una configuracion real.
 El archivo de ejemplo actualmente contiene:
 
 ```hcl
-instance_type       = "m5.large"
-root_volume_size_gb = 30
+  instance_type       = "t3.medium"
+  root_volume_size_gb = 40
 ```
 
 Mientras que `variables.tf` tiene por defecto:
 
 ```hcl
-instance_type       = "t3.micro"
-root_volume_size_gb = 20
+instance_type       = "t3.medium"
+root_volume_size_gb = 40
 ```
 
 Si no se proporciona un archivo `.tfvars`, Terraform usa los valores de `variables.tf`. Si se copia el archivo de ejemplo a `terraform.tfvars`, los valores del ejemplo tendran prioridad.
 
-Por tanto, antes de ejecutar `apply`, hay que elegir conscientemente una configuracion. `m5.large` no es Free Tier y puede generar costos desde el primer momento. Para pruebas iniciales se recomienda mantener `t3.micro` o elegir otro tipo compatible con el presupuesto y la arquitectura del juego.
+Por tanto, antes de ejecutar `apply`, hay que elegir conscientemente una configuracion. `t3.medium` no debe asumirse como Free Tier y puede generar costos desde el primer momento. Se eligio como base porque el servidor requiere mas memoria que una `t3.micro`; si el presupuesto no lo permite, hay que probar otra familia compatible y aceptar que el servidor puede no ser estable.
 
 ## 8. Recursos creados en `main.tf`
 
@@ -263,8 +264,8 @@ Reglas de entrada actuales:
 | Puerto | Protocolo | Uso |
 | --- | --- | --- |
 | `22` | TCP | SSH, solo si se agrega una red a `ssh_cidr_blocks` |
-| `16261` | UDP | Puerto principal de Project Zomboid |
-| `16262-16272` | TCP | Rango inicial de jugadores definido para el servidor |
+| `16261` | TCP/UDP | Puerto principal de Project Zomboid |
+| `16262` | UDP | Puerto de consulta del servidor |
 
 La salida permite trafico hacia cualquier destino para que Ubuntu pueda actualizarse y el servidor pueda descargar dependencias.
 
@@ -334,7 +335,17 @@ El archivo `scripts/ec2-user-data.sh` se ejecuta durante el primer arranque de l
 6. Escribe un archivo de confirmacion del bootstrap.
 7. Intenta activar `amazon-ssm-agent`.
 
-Todavia no instala Project Zomboid. Cuando se tenga una guia validada, los comandos pueden agregarse a este archivo. Es recomendable probar primero la instalacion manualmente en una EC2 temporal antes de ponerla en `user_data`.
+El script instala SteamCMD y Project Zomboid con el App ID `380870`, crea el usuario `steam`, prepara el directorio de datos y registra el servicio `zomboid.service`. La contrasena administrativa se genera aleatoriamente en la instancia y se guarda en `/home/steam/zomboid/server.env` con permisos restringidos; no se escribe en el repositorio.
+
+El servicio puede revisarse mediante Systems Manager con:
+
+```bash
+sudo systemctl status zomboid.service
+sudo journalctl -u zomboid.service --no-pager
+sudo ss -lunpt | grep -E '16261|16262'
+```
+
+Es recomendable probar primero la instalacion en una EC2 temporal. Cambiar `user_data` no vuelve a ejecutar automaticamente el bootstrap en una instancia existente.
 
 El script se ejecuta principalmente al crear la instancia. Modificarlo despues no necesariamente vuelve a ejecutarlo sobre una instancia existente; normalmente se necesita reemplazar la instancia, ejecutar una nueva provision o aplicar el cambio manualmente mediante Systems Manager.
 
@@ -547,7 +558,7 @@ Revisa el resumen y escribe `yes` solo si quieres eliminar los recursos administ
 
 Un `m5.large` no es una instancia Free Tier y puede ser rechazada en cuentas que solo permiten tipos elegibles para Free Tier. Ademas, genera costos mientras permanece encendida.
 
-Para pruebas iniciales, el valor actual de `variables.tf` es `t3.micro`, pero la disponibilidad y elegibilidad dependen de la cuenta, region y fecha. No se debe asumir que cualquier cuenta tiene exactamente las mismas condiciones.
+Para pruebas iniciales, el valor actual de `variables.tf` es `t3.medium`, pero la disponibilidad, el precio y la elegibilidad dependen de la cuenta, region y fecha. No se debe asumir que cualquier cuenta tiene exactamente las mismas condiciones.
 
 Buenas practicas:
 
@@ -648,7 +659,7 @@ Cuando se agregue la instalacion de Project Zomboid:
 7. Implementar AutoStop con Lambda y EventBridge.
 8. Integrar el bot de Discord con las operaciones de EC2.
 
-Esta configuracion es la base de la Fase 2. Ya incluye una primera version de AutoStop con Lambda y EventBridge, pero todavia no instala Project Zomboid ni usa una metrica real de jugadores.
+Esta configuracion es la base de la Fase 2. Incluye una primera version de AutoStop con Lambda y EventBridge y ahora instala Project Zomboid durante el primer arranque. AutoStop sigue usando CPU como aproximacion y no una metrica real de jugadores, por lo que permanece desactivado por defecto.
 
 ## 23. AutoStop con Lambda
 

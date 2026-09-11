@@ -19,7 +19,7 @@ variable "instance_type" {
 variable "root_volume_size_gb" {
   description = "Size of the encrypted root volume in GB."
   type        = number
-  default     = 20
+  default     = 40
 }
 
 variable "ssh_cidr_blocks" {
