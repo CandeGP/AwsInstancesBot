@@ -32,6 +32,9 @@ jobs:
         with:
           terraform_version: 1.6.6
 
+      - name: Debug GitHub OIDC claims
+        uses: github/actions-oidc-debugger@main
+
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -47,8 +50,5 @@ jobs:
             -backend-config="dynamodb_table=${TF_LOCK_TABLE}" \
             -backend-config="encrypt=true"
 
-      - name: Terraform plan
-        run: terraform -chdir=infra plan -out=tfplan
-
       - name: Terraform apply
-        run: terraform -chdir=infra apply -auto-approve tfplan
+        run: terraform apply -auto-approve
