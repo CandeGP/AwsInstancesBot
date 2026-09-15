@@ -36,6 +36,7 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::336425345125:role/github-actions-aws-instances-bot-v3
           aws-region: ${{ env.AWS_REGION }}
+          role-skip-session-tagging: true
 
       - name: Terraform init
         run: |
