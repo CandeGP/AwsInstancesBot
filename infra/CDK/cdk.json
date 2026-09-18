@@ -1,0 +1,13 @@
+{
+  "app": "npx ts-node --project tsconfig.json --prefer-ts-exts bin/infra.ts",
+  "context": {
+    "projectName": "aws-instances-bot",
+    "instanceType": "t3.micro",
+    "rootVolumeSizeGb": 40,
+    "sshCidrBlocks": [],
+    "autoStopEnabled": true,
+    "autoStopSchedule": "rate(15 minutes)",
+    "autoStopCpuThreshold": 5,
+    "autoStopIdleMinutes": 30
+  }
+}

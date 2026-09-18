@@ -11,3 +11,5 @@ crash.log
 lambdas/*.zip
 tfplan
 __pycache__/
+cdk.out/
+cdk.context.json

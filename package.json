@@ -6,13 +6,22 @@
   "scripts": {
     "dev": "commandkit dev",
     "build": "commandkit build",
-    "start": "commandkit start"
+    "start": "commandkit start",
+    "infra:synth": "cdk synth --app \"npx ts-node --project infra/CDK/tsconfig.json --prefer-ts-exts infra/CDK/bin/infra.ts\"",
+    "infra:diff": "cdk diff --app \"npx ts-node --project infra/CDK/tsconfig.json --prefer-ts-exts infra/CDK/bin/infra.ts\"",
+    "infra:deploy": "cdk deploy --app \"npx ts-node --project infra/CDK/tsconfig.json --prefer-ts-exts infra/CDK/bin/infra.ts\" --require-approval never",
+    "infra:destroy": "cdk destroy --app \"npx ts-node --project infra/CDK/tsconfig.json --prefer-ts-exts infra/CDK/bin/infra.ts\""
   },
   "dependencies": {
+    "aws-cdk-lib": "^2.230.0",
     "commandkit": "latest",
+    "constructs": "^10.4.2",
     "discord.js": "latest"
   },
   "devDependencies": {
+    "@types/node": "^22.15.0",
+    "aws-cdk": "^2.1030.0",
+    "ts-node": "^10.9.2",
     "typescript": "latest"
   }
 }
