@@ -118,7 +118,8 @@
 - 39 pruebas unitarias (Lambdas `server_control` y `notifier`) sin llamadas a AWS ni a Discord: pasan (`python -m unittest discover -s lambdas/tests -t lambdas -v`). Incluyen que el apagado continúa si falla el tag, que el tag solo se borra si el mensaje se envió, el rechazo de URLs que no son de Discord, que la URL nunca se devuelve y el vencimiento del cache.
 - `terraform validate` y `terraform fmt -check` pasan con Terraform 1.6.6 en un contenedor Docker.
 - `tsc --noEmit` y `npm run build` pasan. `/notificaciones` se probó con una interacción de Discord simulada contra una API falsa: éxito (crea el webhook y hace `PUT` con la API key), fallo de la API (borra el webhook), bot sin permiso y usuario sin rol (no crea nada).
-- **No validado:** `terraform plan/apply`, el comando en Discord real (creación de webhook y mensaje de prueba), la recepción real de mensajes y la alarma de salud en AWS.
+- **Validación en producción:** tras el despliegue, la autora confirmó que `/notificaciones` funciona en Discord real. No se registró si también se probaron los avisos de encendido y apagado, ni la alarma de salud.
+- **Incidente resuelto:** la primera prueba real de `/notificaciones` falló con "Error al comunicarse con AWS". El log de la Lambda mostró `No access to reserved parameter name`: SSM prohíbe nombres de parámetro que empiezan por `aws` o `ssm`, y el original era `/aws-instances-bot/discord-webhook-url`. Se renombró a `/discord-bot/aws-instances-bot/webhook-url` y se añadió una prueba que falla si el nombre vuelve a ser reservado. Ese mensaje ya había aparecido en una prueba local previa y no se reconoció a tiempo.
 
 **Riesgos y decisiones pendientes:**
 - **Acción necesaria tras el deploy:** que un administrador ejecute `/notificaciones` (el bot debe tener el permiso *Gestionar webhooks* en el canal elegido). Hasta entonces no llega ninguna notificación; el deploy no falla.
