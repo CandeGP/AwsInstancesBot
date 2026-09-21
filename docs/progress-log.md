@@ -144,11 +144,13 @@
 
 **Estado nuevo (en el repositorio, pendiente de desplegar):**
 - `infra/variables.tf`: `instance_type` por defecto pasa a `m7i-flex.large`. Cambiar el tipo es una modificación en el sitio (se apaga y enciende); el disco y el mundo se conservan.
-- `scripts/ec2-user-data.sh`: el bootstrap hace `chown -R steam:steam` de `zomboid-data` como `root`, se quitó el `chown` de `start_server.sh`, y el heap de Java pasa a ser el 75 % de la RAM (máximo 8 GB) en vez de `1536m` fijo. Por `ignore_changes = [user_data]`, esto solo afecta a instancias nuevas.
+- `scripts/ec2-user-data.sh`: el bootstrap hace `chown -R steam:steam` de `zomboid-data` como `root`, se quitó el `chown` de `start_server.sh`, y el heap de Java pasa a ser el 50 % de la RAM (máximo 8 GB) en vez de `1536m` fijo. Por `ignore_changes = [user_data]`, esto solo afecta a instancias nuevas.
 
-**Cambios manuales en la instancia existente (no están en Terraform):** `chown -R steam:steam /home/steam/zomboid-data` y reinicio del servicio. El heap (`-Xmx1536m`) se ajustará a mano tras el cambio de tipo.
+**Cambios manuales en la instancia existente (no están en Terraform):** `chown -R steam:steam /home/steam/zomboid-data` y, tras el resize, `-Xmx4096m` en `/home/steam/zomboid/ProjectZomboid64.json` (el `user_data` no se vuelve a ejecutar) con reinicio del servicio.
 
-**Validación:** `bash -n` del script y `terraform validate`/`fmt` con 1.6.6 pasan. **No validado:** que el juego arranque y acepte conexiones con 8 GB, que se logre conectar desde el cliente y el comportamiento del resize por Terraform.
+**Resultado del cambio de tipo (push `f31aeb4`, `terraform apply` por Actions):** la instancia pasó a `m7i-flex.large` con 7 776 MB de RAM y Terraform la dejó encendida. Se midió el heap: con `-Xmx5832m` (75 %) el juego arrancó (`*** SERVER STARTED ****`, UDP 16261 y 16262 en escucha, sin OOM) pero quedaban solo ~480 MB disponibles sin jugadores, porque el juego usa ZGC, que compromete todo el heap, y ~1 GB adicional fuera de él. Con `-Xmx4096m` quedan ~2 170 MB disponibles y el proceso ocupa ~5.1 GB. Por eso el script usa el 50 %.
+
+**Validación:** `bash -n` del script y `terraform validate`/`fmt` con 1.6.6 pasan. En la instancia real (por SSM): el resize por Terraform funcionó, el servicio queda `active`, escucha en 16261 y 16262 y no hay OOM. **No validado:** conectarse desde el cliente del juego, el `user_data` corregido en una instancia nueva (solo se verificó su sintaxis) y el comportamiento con jugadores reales.
 
 **Riesgos y decisiones pendientes:**
 - Un cambio de `instance_type` por Terraform apaga la instancia; el `apply` no debe coincidir con jugadores conectados.

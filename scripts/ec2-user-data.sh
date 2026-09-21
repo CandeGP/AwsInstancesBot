@@ -61,9 +61,10 @@ chmod +x "${GAME_DIR}/ProjectZomboid64"
 # install -d creates the parent of Saves/Mods/logs as root, and the service runs as steam.
 chown -R steam:steam "${DATA_DIR}"
 
-# JVM heap: 75% of the instance RAM (max 8 GB), instead of a value tuned for a tiny instance.
+# JVM heap: 50% of the instance RAM (max 8 GB). ZGC commits the whole heap and the game uses
+# about 1 GB outside it, so 75% left only ~480 MB free on an 8 GB instance with no players.
 total_mb="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)"
-heap_mb=$((total_mb * 3 / 4))
+heap_mb=$((total_mb / 2))
 if ((heap_mb > 8192)); then heap_mb=8192; fi
 
 unzip -p "${GAME_DIR}/java/projectzomboid.jar" \
