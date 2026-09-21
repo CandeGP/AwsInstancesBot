@@ -1,6 +1,8 @@
 // Cliente HTTP de la API de control del servidor (API Gateway -> Lambda -> EC2).
 // La URL base y la API key salen de SERVER_API_URL / SERVER_API_KEY (ver .env.example).
 
+import { UserError } from './userError';
+
 export interface ServerInfo {
   instance_id: string;
   state: string;
@@ -13,7 +15,7 @@ export interface ServerInfo {
 }
 
 // Error con un mensaje apto para mostrarse al usuario en Discord.
-export class ServerApiError extends Error {
+export class ServerApiError extends UserError {
   constructor(
     message: string,
     readonly status?: number,
@@ -25,7 +27,7 @@ export class ServerApiError extends Error {
 
 const REQUEST_TIMEOUT_MS = 20_000;
 
-async function request(method: 'GET' | 'POST', path: string): Promise<ServerInfo> {
+async function request<T>(method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown): Promise<T> {
   const baseUrl = process.env.SERVER_API_URL;
   const apiKey = process.env.SERVER_API_KEY;
   if (!baseUrl || !apiKey) {
@@ -36,25 +38,33 @@ async function request(method: 'GET' | 'POST', path: string): Promise<ServerInfo
   try {
     response = await fetch(`${baseUrl.replace(/\/$/, '')}${path}`, {
       method,
-      headers: { 'x-api-key': apiKey },
+      headers: {
+        'x-api-key': apiKey,
+        ...(body !== undefined && { 'Content-Type': 'application/json' }),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch {
     throw new ServerApiError('No pude comunicarme con la API del servidor (sin respuesta o tiempo agotado).');
   }
 
-  const body = (await response.json().catch(() => ({}))) as Partial<ServerInfo>;
+  const data = (await response.json().catch(() => ({}))) as { message?: string };
   if (!response.ok) {
     // 403 lo devuelve API Gateway cuando la API key es invalida.
-    const detail = response.status === 403 ? 'API key invalida o sin permisos.' : (body.message ?? `HTTP ${response.status}`);
+    const detail = response.status === 403 ? 'API key invalida o sin permisos.' : (data.message ?? `HTTP ${response.status}`);
     throw new ServerApiError(detail, response.status);
   }
-  return body as ServerInfo;
+  return data as T;
 }
 
-export const getServerStatus = () => request('GET', '/server');
-export const startServer = () => request('POST', '/server/start');
-export const stopServer = () => request('POST', '/server/stop');
+export const getServerStatus = () => request<ServerInfo>('GET', '/server');
+export const startServer = () => request<ServerInfo>('POST', '/server/start');
+export const stopServer = () => request<ServerInfo>('POST', '/server/stop');
+
+// Guarda el webhook (secreto) que usa la Lambda notifier. La API nunca lo devuelve.
+export const setNotificationWebhook = (webhookUrl: string) =>
+  request<{ message: string }>('PUT', '/config/notifications', { webhook_url: webhookUrl });
 
 const STATE_LABELS: Record<string, string> = {
   running: '🟢 Encendido',

@@ -76,22 +76,43 @@ El contenedor queda corriendo en segundo plano (`restart: unless-stopped`), por 
 
 | Comando | Descripción |
 | --- | --- |
-| `/startserver` | Enciende la instancia EC2 del juego. Solo administradores o roles en `ADMIN_ROLE_IDS`. |
-| `/stopserver` | Apaga la instancia EC2. Solo administradores o roles en `ADMIN_ROLE_IDS`. |
+| `/startserver` | Enciende la instancia EC2 del juego. Cualquier miembro del servidor de Discord. |
+| `/stopserver` | Apaga la instancia EC2. Cualquier miembro del servidor de Discord. |
 | `/status` | Muestra el estado del bot y del servidor (estado, tipo de instancia, IP y puerto). |
+| `/notificaciones` | Elige el canal donde llegan los avisos del servidor. Solo administradores de Discord. |
 | `/stats` | Reporta rendimiento y costos estimados. |
 | `/upgrade` | Cambia el tipo de instancia, por ejemplo `t3.micro` a `t4.large`. |
 
 ### Conexión del bot con AWS
 
-Flujo: **Discord → bot → API Gateway → Lambda (Python) → EC2**. Las rutas (`GET /server`, `POST /server/start`, `POST /server/stop`) requieren el header `x-api-key`. Tras el despliegue de Terraform, configura el bot con:
+Flujo: **Discord → bot → API Gateway → Lambda (Python) → EC2**. Las rutas (`GET /server`, `POST /server/start`, `POST /server/stop` y `PUT /config/notifications`) requieren el header `x-api-key`. Tras el despliegue de Terraform, configura el bot con:
 
 ```bash
 terraform -chdir=infra output -raw server_api_url   # SERVER_API_URL
 terraform -chdir=infra output -raw server_api_key   # SERVER_API_KEY
 ```
 
-Agrega ambos valores a `.env`, junto con `ADMIN_ROLE_IDS` (IDs de roles separados por coma; los administradores del servidor de Discord siempre pueden). Los tests de la Lambda se ejecutan con `python -m unittest discover -s lambdas/tests -t lambdas -v`.
+Agrega ambos valores a `.env`. Los comandos `/startserver`, `/stopserver` y `/status` los puede usar cualquier miembro del servidor de Discord (no funcionan por mensaje directo); solo `/notificaciones` exige ser administrador.
+
+### Notificaciones en Discord
+
+Flujo: **EventBridge → Lambda `notifier` → webhook de Discord**. Avisa cuando el servidor se enciende (con la IP y el puerto), se apaga (indicando si fue por AutoStop o por `/stopserver`), se elimina la instancia, o falla la verificación de estado de EC2 (y cuando se recupera). Funciona sin importar quién cambió el estado: el bot, AutoStop o la consola de AWS.
+
+Se configura **desde Discord**, sin tocar AWS ni GitHub: un administrador ejecuta `/notificaciones canal:#canal`. El bot crea un webhook en ese canal, lo guarda en AWS (SSM Parameter Store, SecureString, a través de `PUT /config/notifications`) y publica un mensaje de prueba. Para cambiar de canal basta con repetir el comando; el notifier detecta el cambio en un máximo de 5 minutos.
+
+- Requiere que el bot tenga el permiso **Gestionar webhooks** en ese canal.
+- La URL del webhook es un secreto: no se muestra, no se guarda en Terraform ni en GitHub, y la API nunca la devuelve.
+- Al cambiar de canal, el webhook del canal anterior queda creado pero sin uso; puedes borrarlo en *Ajustes del canal → Integraciones*.
+- Mientras no se ejecute `/notificaciones`, el notifier lo registra en los logs y no envía nada.
+
+Alternativa manual (sin el bot):
+
+```bash
+aws ssm put-parameter --name /aws-instances-bot/discord-webhook-url \
+  --type SecureString --value "https://discord.com/api/webhooks/..." --overwrite
+```
+
+Los tests de las Lambdas se ejecutan con `python -m unittest discover -s lambdas/tests -t lambdas -v`.
 
 ## Monitoreo y control de costos
 

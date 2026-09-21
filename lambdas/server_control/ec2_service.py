@@ -4,7 +4,14 @@ All functions take the boto3 EC2 client as a parameter so they can be tested
 with a fake client and never create AWS connections on import.
 """
 
+import logging
+
+logger = logging.getLogger()
+
 GAME_PORT = 16261
+
+# Read (and removed) by the notifier Lambda to say why the server stopped.
+STOP_REASON_TAG = "LastStopReason"
 
 # States in which the instance is already on its way to (or at) each goal.
 _RUNNING_STATES = {"running", "pending"}
@@ -43,6 +50,14 @@ def _summary(instance, state=None):
     }
 
 
+def _tag_stop_reason(ec2, instance_id):
+    # Best effort: a missing tag only makes the Discord notification less specific.
+    try:
+        ec2.create_tags(Resources=[instance_id], Tags=[{"Key": STOP_REASON_TAG, "Value": "command"}])
+    except Exception:
+        logger.exception("Could not tag the stop reason")
+
+
 def get_status(ec2, instance_id):
     instance = _describe(ec2, instance_id)
     return {**_summary(instance), "message": "Estado del servidor consultado."}
@@ -70,5 +85,6 @@ def stop_server(ec2, instance_id):
     if state != "running":
         raise ServerError(409, f"El servidor esta en estado '{state}'. Intenta de nuevo en unos minutos.")
 
+    _tag_stop_reason(ec2, instance_id)
     ec2.stop_instances(InstanceIds=[instance_id])
     return {**_summary(instance, state="stopping"), "changed": True, "message": "Apagando el servidor."}

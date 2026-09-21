@@ -34,3 +34,13 @@ output "server_control_lambda_name" {
   description = "Name of the server control Lambda."
   value       = aws_lambda_function.server_control.function_name
 }
+
+output "notifier_lambda_name" {
+  description = "Name of the Discord notifier Lambda."
+  value       = aws_lambda_function.notifier.function_name
+}
+
+output "discord_webhook_ssm_parameter" {
+  description = "SSM parameter (SecureString) holding the Discord webhook URL. Set it with /notificaciones in Discord."
+  value       = local.webhook_param_name
+}

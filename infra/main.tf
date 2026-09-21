@@ -195,6 +195,12 @@ resource "aws_iam_role_policy" "automation" {
         Resource = "*"
       },
       {
+        # Marks why the instance was stopped so the notifier can tell Discord.
+        Effect   = "Allow"
+        Action   = ["ec2:CreateTags"]
+        Resource = local.instance_arn
+      },
+      {
         Effect = "Allow"
         Action = [
           "cloudwatch:GetMetricStatistics"

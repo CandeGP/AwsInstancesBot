@@ -85,7 +85,7 @@
 - 12 pruebas unitarias de la Lambda con un cliente EC2 falso (`python -m unittest discover -s lambdas/tests -t lambdas -v`): pasan.
 - `terraform validate` y `terraform fmt -check` pasan con Terraform 1.6.6 (la versión del workflow), ejecutados en un contenedor Docker. En esta máquina `terraform validate` falla en local porque el antivirus (Norton) intercepta el TLS entre Terraform y sus plugins (`x509: certificate signed by unknown authority`); es la misma causa que rompió `git push`.
 - `tsc --noEmit` y `npm run build` pasan. El cliente HTTP se probó contra un servidor simulado (200, 409, 403 y falta de configuración).
-- **No validado:** `terraform plan/apply` (requiere credenciales y backend S3), la Lambda desplegada y los comandos en Discord real.
+- **Validación en producción:** la autora confirmó que el despliegue por GitHub Actions se completó y que el flujo bot → API Gateway → Lambda → EC2 funciona en Discord real. No se registró qué comandos se probaron ni el resultado del `terraform plan`.
 
 **Riesgos y decisiones pendientes:**
 - El push a `main` dispara `terraform apply -auto-approve` y crea la API, la Lambda y la API key. Revisar en Actions que el plan no toque `aws_instance.game_server`.
@@ -95,3 +95,39 @@
 - `/upgrade` queda fuera: falta decidir cómo manejar el drift del tipo de instancia con Terraform (ver entrada anterior). Tampoco hay aún notificaciones automáticas a Discord (SNS/webhooks) ni cooldown por jugadores.
 
 **Próximo criterio de aceptación:** tras el despliegue, copiar `server_api_url` y `server_api_key` al `.env`, reiniciar el contenedor (`docker compose -f docker/docker-compose.yml up --build -d`) y confirmar en Discord que `/status` muestra el estado real, que `/startserver` lo enciende, que `/stopserver` lo apaga y que un usuario sin rol recibe el mensaje de permisos.
+
+## 2026-09-21 — Fase 3: notificaciones automáticas en Discord
+
+**Contexto:** con el control del servidor funcionando, nadie se enteraba de los cambios que no pasaban por el bot (por ejemplo, cuando AutoStop apagaba la instancia) ni de fallos. Además, `/startserver` responde antes de que exista la IP pública, que cambia en cada arranque.
+
+**Estado nuevo:**
+- `lambdas/notifier/` (Python 3.12): `messages.py` (texto de cada evento, sin llamadas a AWS), `webhook.py` (lee la URL desde SSM y publica en Discord) y `handler.py` (orquesta). Errores transitorios (5xx, 429, red) se relanzan para que EventBridge reintente; errores permanentes (4xx) y la falta de configuración solo se registran.
+- `infra/notifications.tf` y `infra/control_api.tf`: Lambda con rol de mínimo privilegio, dos reglas de EventBridge (cambios de estado `running`/`stopped`/`terminated` de la instancia y cambios de la alarma de salud) y la alarma `StatusCheckFailed` (3 minutos seguidos fallando; sin datos no cuenta como fallo).
+- Motivo del apagado: AutoStop y `/stopserver` escriben el tag temporal `LastStopReason` (`autostop` o `command`) justo antes de apagar; el notifier lo lee, lo incluye en el mensaje y lo borra. Si el tag falla, el apagado continúa igual y el mensaje simplemente no trae el motivo.
+- Permisos: `ec2:CreateTags` acotado al ARN de la instancia en la política de AutoStop (`infra/main.tf`) y en la de `server_control`.
+- Secreto: la URL del webhook vive en SSM Parameter Store como SecureString (`/aws-instances-bot/discord-webhook-url`). No está en el estado de Terraform, ni en GitHub, ni en variables de entorno de la Lambda.
+- **Configuración desde Discord:** `/notificaciones canal:#canal` (solo administradores de Discord). El bot crea un webhook en el canal, lo envía a `PUT /config/notifications` (Lambda `server_control`, módulo `config_service.py`) y publica un mensaje de prueba. La Lambda solo acepta URLs `https://discord.com/api/webhooks/<id>/<token>` (evita apuntar el notifier a otro host), nunca devuelve ni registra la URL y tiene `ssm:PutParameter` (solo escritura) únicamente sobre ese parámetro. Si AWS no puede guardarla, el bot borra el webhook recién creado; si falta el permiso *Gestionar webhooks*, lo explica.
+- **Cambio de decisión sobre permisos (reemplaza la línea "Permisos" de la entrada anterior):** cualquier miembro del servidor de Discord puede usar `/startserver`, `/stopserver` y `/status`. Se eliminó `ADMIN_ROLE_IDS`. Los comandos no funcionan por mensaje directo (`dm_permission: false` y comprobación en el bot). `/notificaciones` sigue exigiendo el permiso de Administrador de Discord porque cambia a dónde van los avisos. Se evaluó y se descartó una lista de roles por servidor (DynamoDB y comando `/permisos`); no quedó nada de eso en el código ni en la infraestructura. Las respuestas del bot nunca mencionan (ping) a roles ni usuarios.
+- El notifier cachea la URL 5 minutos (TTL), de modo que un cambio de canal se aplica sin redesplegar. El `aws ssm put-parameter` manual sigue siendo válido como alternativa.
+- Mensajes: 🟢 encendido (con `IP:puerto`), 🔴 apagado (con motivo si se conoce), ⚫ instancia eliminada, ⚠️ fallo de salud y ✅ recuperación. Las horas se muestran en la zona horaria de cada lector.
+- Documentación: `README.md` (sección de notificaciones y creación del parámetro) y `docs/architecture.md` (EventBridge + notifier en lugar de SNS).
+
+**Archivos modificados:** `lambdas/notifier/handler.py`, `lambdas/notifier/messages.py`, `lambdas/notifier/webhook.py`, `lambdas/tests/test_notifier.py`, `lambdas/tests/test_server_control.py`, `lambdas/auto_stop.py`, `lambdas/server_control/ec2_service.py`, `lambdas/server_control/config_service.py`, `lambdas/server_control/handler.py`, `src/app/commands/notificaciones.ts`, `src/lib/serverApi.ts`, `src/lib/serverAction.ts`, `src/lib/userError.ts`, `infra/notifications.tf`, `infra/main.tf`, `infra/control_api.tf`, `infra/outputs.tf`, `README.md`, `docs/architecture.md`, `docs/progress-log.md`.
+
+**Validación:**
+- 39 pruebas unitarias (Lambdas `server_control` y `notifier`) sin llamadas a AWS ni a Discord: pasan (`python -m unittest discover -s lambdas/tests -t lambdas -v`). Incluyen que el apagado continúa si falla el tag, que el tag solo se borra si el mensaje se envió, el rechazo de URLs que no son de Discord, que la URL nunca se devuelve y el vencimiento del cache.
+- `terraform validate` y `terraform fmt -check` pasan con Terraform 1.6.6 en un contenedor Docker.
+- `tsc --noEmit` y `npm run build` pasan. `/notificaciones` se probó con una interacción de Discord simulada contra una API falsa: éxito (crea el webhook y hace `PUT` con la API key), fallo de la API (borra el webhook), bot sin permiso y usuario sin rol (no crea nada).
+- **No validado:** `terraform plan/apply`, el comando en Discord real (creación de webhook y mensaje de prueba), la recepción real de mensajes y la alarma de salud en AWS.
+
+**Riesgos y decisiones pendientes:**
+- **Acción necesaria tras el deploy:** que un administrador ejecute `/notificaciones` (el bot debe tener el permiso *Gestionar webhooks* en el canal elegido). Hasta entonces no llega ninguna notificación; el deploy no falla.
+- Cualquier miembro del servidor puede encender el servidor (costo de EC2) y apagarlo aunque haya gente jugando; el único freno es el límite de la API (5 req/s, 1000 al día). Si molesta, la salida más simple es limitar `/stopserver` a un rol.
+- Quien tenga la API key puede redirigir las notificaciones a otro webhook de Discord (no a otros hosts). Es un nuevo alcance de la misma clave compartida.
+- Al cambiar de canal, el webhook anterior no se borra (no se guarda su ID): queda huérfano en el canal viejo y se puede eliminar a mano desde *Integraciones*.
+- El tag `LastStopReason` no está en `aws_instance.game_server`, por lo que un `terraform apply` ejecutado justo entre el apagado y la notificación lo eliminaría (solo se perdería el motivo del mensaje).
+- Una falla persistente de Discord agota los reintentos de EventBridge y el mensaje se pierde; no hay cola de mensajes fallidos.
+- Al reemplazar la instancia (`-replace`), las reglas y la alarma se actualizan al nuevo ID en el siguiente `apply`.
+- Sigue pendiente el cooldown por jugadores (el AutoStop solo mira CPU) y `/upgrade`.
+
+**Próximo criterio de aceptación:** ejecutar `/notificaciones` en el canal deseado y confirmar el mensaje de prueba; con el servidor apagado, ejecutar `/startserver` y confirmar que llega el mensaje 🟢 con la IP; luego `/stopserver` y confirmar el 🔴 con "Se apagó con /stopserver"; y comprobar un apagado por AutoStop con su motivo.

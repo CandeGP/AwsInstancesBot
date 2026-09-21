@@ -40,6 +40,15 @@ def lambda_handler(event, context):
 
             is_idle = all(point["Average"] <= threshold for point in datapoints)
             if is_idle:
+                # Read (and removed) by the notifier Lambda to say why the server stopped.
+                # Best effort: a failed tag must never prevent the stop.
+                try:
+                    ec2.create_tags(
+                        Resources=[instance_id],
+                        Tags=[{"Key": "LastStopReason", "Value": "autostop"}],
+                    )
+                except Exception as error:
+                    print(f"Could not tag stop reason for {instance_id}: {error}")
                 ec2.stop_instances(InstanceIds=[instance_id])
                 stopped.append(instance_id)
 

@@ -4,6 +4,7 @@
 #   GET  /server        status
 #   POST /server/start  start the game server
 #   POST /server/stop   stop the game server
+#   PUT  /config/notifications  set the Discord webhook for notifications (used by /notificaciones)
 
 data "aws_region" "current" {}
 
@@ -20,6 +21,11 @@ data "archive_file" "server_control" {
   source {
     content  = file("${path.module}/../lambdas/server_control/ec2_service.py")
     filename = "ec2_service.py"
+  }
+
+  source {
+    content  = file("${path.module}/../lambdas/server_control/config_service.py")
+    filename = "config_service.py"
   }
 }
 
@@ -59,9 +65,16 @@ resource "aws_iam_role_policy" "server_control" {
         Resource = "*"
       },
       {
+        Effect = "Allow"
+        # CreateTags records the stop reason ("command") for the Discord notification.
+        Action   = ["ec2:StartInstances", "ec2:StopInstances", "ec2:CreateTags"]
+        Resource = local.instance_arn
+      },
+      {
+        # Lets /notificaciones replace the Discord webhook. Write-only: the Lambda cannot read it back.
         Effect   = "Allow"
-        Action   = ["ec2:StartInstances", "ec2:StopInstances"]
-        Resource = "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:instance/${aws_instance.game_server.id}"
+        Action   = ["ssm:PutParameter"]
+        Resource = local.webhook_param_arn
       },
       {
         Effect   = "Allow"
@@ -85,7 +98,8 @@ resource "aws_lambda_function" "server_control" {
 
   environment {
     variables = {
-      INSTANCE_ID = aws_instance.game_server.id
+      INSTANCE_ID        = aws_instance.game_server.id
+      WEBHOOK_PARAM_NAME = local.webhook_param_name
     }
   }
 
@@ -127,11 +141,25 @@ resource "aws_api_gateway_resource" "server_action" {
   path_part   = each.key
 }
 
+resource "aws_api_gateway_resource" "config" {
+  rest_api_id = aws_api_gateway_rest_api.server_control.id
+  parent_id   = aws_api_gateway_rest_api.server_control.root_resource_id
+  path_part   = "config"
+}
+
+resource "aws_api_gateway_resource" "config_notifications" {
+  rest_api_id = aws_api_gateway_rest_api.server_control.id
+  parent_id   = aws_api_gateway_resource.config.id
+  path_part   = "notifications"
+}
+
 locals {
   api_methods = {
     status = { resource_id = aws_api_gateway_resource.server.id, http_method = "GET" }
     start  = { resource_id = aws_api_gateway_resource.server_action["start"].id, http_method = "POST" }
     stop   = { resource_id = aws_api_gateway_resource.server_action["stop"].id, http_method = "POST" }
+
+    notifications = { resource_id = aws_api_gateway_resource.config_notifications.id, http_method = "PUT" }
   }
 }
 
@@ -164,6 +192,8 @@ resource "aws_api_gateway_deployment" "server_control" {
     redeployment = sha1(jsonencode([
       aws_api_gateway_resource.server,
       aws_api_gateway_resource.server_action,
+      aws_api_gateway_resource.config,
+      aws_api_gateway_resource.config_notifications,
       aws_api_gateway_method.server_control,
       aws_api_gateway_integration.server_control,
     ]))

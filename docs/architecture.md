@@ -15,7 +15,7 @@ flowchart TD
 	ec2 --> database[(RDS / DynamoDB)]
 	ec2 --> metrics[CloudWatch]
 	metrics --> alerts{Supera un límite?}
-	alerts -- Sí --> sns[SNS]
+	alerts -- Sí --> sns[EventBridge y Lambda notifier]
 	alerts -- No --> response[Respuesta de estado]
 	sns --> notification[Notificación en Discord]
 	ec2 --> response
@@ -34,7 +34,7 @@ sequenceDiagram
 	participant EC2 as Servidor EC2
 	participant BD as RDS / DynamoDB
 	participant CW as CloudWatch
-	participant SNS as SNS / Discord
+	participant SNS as EventBridge / Lambda notifier / Discord
 
 	Usuario->>Bot: Envía un comando
 	Bot->>API: Solicitud HTTPS con x-api-key
@@ -46,8 +46,8 @@ sequenceDiagram
 	API-->>Bot: Respuesta JSON
 	Bot-->>Usuario: Confirma la operación
 	EC2->>CW: Registra métricas y logs
-	CW->>SNS: Envía una alerta si supera los límites
-	SNS-->>Bot: Publica una notificación
+	CW->>SNS: Alarma de salud o cambio de estado de la instancia
+	SNS-->>Bot: Publica la notificación en el webhook de Discord
 ```
 
 ## Diagrama de componentes
@@ -78,7 +78,7 @@ flowchart LR
 
 	subgraph Monitoring[Monitoreo y alertas]
 		cloudwatch[CloudWatch: logs y métricas]
-		sns[SNS / Discord]
+		sns[EventBridge / Lambda notifier / Discord]
 		cloudwatch --> sns
 	end
 
@@ -97,6 +97,6 @@ flowchart LR
 | **EC2** | Aloja y ejecuta el servidor de juego. |
 | **RDS / DynamoDB** | Conserva configuraciones y estados del juego. |
 | **CloudWatch** | Centraliza logs, métricas y monitoreo. |
-| **SNS** | Distribuye alertas y notificaciones. |
+| **EventBridge + Lambda notifier** | Detecta cambios de estado de la instancia y alarmas de salud, y los publica en un webhook de Discord. |
 | **IAM** | Controla los permisos entre servicios. |
 | **Secrets Manager** | Protege tokens, claves y otros secretos. |
