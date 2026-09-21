@@ -13,7 +13,9 @@ variable "project_name" {
 variable "instance_type" {
   description = "EC2 instance type for the game server."
   type        = string
-  default     = "t3.micro" #cambiamos la version de la instancia de m5.large a t3.micro, aws no me deja pq es muy caro
+  # t3.micro (1 GB) no alcanza para Project Zomboid: el kernel mata el proceso por falta de memoria.
+  # m7i-flex.large (2 vCPU, 8 GB) esta permitida por el plan gratuito de AWS (m5.large no lo esta).
+  default = "m7i-flex.large"
 }
 
 variable "root_volume_size_gb" {

@@ -132,3 +132,27 @@
 - Sigue pendiente el cooldown por jugadores (el AutoStop solo mira CPU) y `/upgrade`.
 
 **Próximo criterio de aceptación:** ejecutar `/notificaciones` en el canal deseado y confirmar el mensaje de prueba; con el servidor apagado, ejecutar `/startserver` y confirmar que llega el mensaje 🟢 con la IP; luego `/stopserver` y confirmar el 🔴 con "Se apagó con /stopserver"; y comprobar un apagado por AutoStop con su motivo.
+
+## 2026-09-21 — Diagnóstico del juego: por qué no arrancaba en la instancia
+
+**Contexto:** el servidor de Project Zomboid nunca había arrancado. Se atribuía a la `t3.micro`, y se descartaba un tipo mayor porque AWS lo rechazaba.
+
+**Diagnóstico (por SSM sobre la instancia real, solo lectura y luego un arreglo puntual):**
+1. **Error del bootstrap:** `zomboid.service` fallaba en bucle (más de 35 reinicios) con `chown: changing ownership of '/home/steam/zomboid-data': Operation not permitted`. `install -d` crea el directorio padre como `root`, y `start_server.sh` (que corre como `steam`) intentaba hacerle `chown`. La descarga del juego (SteamCMD, 9.6 GB) sí había terminado bien.
+2. **Falta de memoria:** corregido lo anterior, el juego avanzó hasta `Initialising Server Systems...` y el kernel lo mató dos veces: `Out of memory: Killed process (ProjectZomboid6...)`. La instancia tiene 909 MB de RAM. Además el bootstrap fijaba el heap de Java en `-Xmx1536m`, más que la RAM total.
+3. **Restricción de cuenta:** la cuenta está en el plan gratuito de AWS (`FREE`, 159.19 USD de créditos, vence el 2027-03-03), que solo permite ciertos tipos de instancia. Según `describe-instance-types` con el filtro `free-tier-eligible`, los permitidos son `t3.micro`, `t4g.micro`, `t8i.micro`, `t3.small`, `t4g.small`, `t8i.small`, `c7i-flex.large` (4 GB) y `m7i-flex.large` (8 GB). Por eso `m5.large` fue rechazado, pero `m7i-flex.large` sí es viable sin cambiar de plan.
+
+**Estado nuevo (en el repositorio, pendiente de desplegar):**
+- `infra/variables.tf`: `instance_type` por defecto pasa a `m7i-flex.large`. Cambiar el tipo es una modificación en el sitio (se apaga y enciende); el disco y el mundo se conservan.
+- `scripts/ec2-user-data.sh`: el bootstrap hace `chown -R steam:steam` de `zomboid-data` como `root`, se quitó el `chown` de `start_server.sh`, y el heap de Java pasa a ser el 75 % de la RAM (máximo 8 GB) en vez de `1536m` fijo. Por `ignore_changes = [user_data]`, esto solo afecta a instancias nuevas.
+
+**Cambios manuales en la instancia existente (no están en Terraform):** `chown -R steam:steam /home/steam/zomboid-data` y reinicio del servicio. El heap (`-Xmx1536m`) se ajustará a mano tras el cambio de tipo.
+
+**Validación:** `bash -n` del script y `terraform validate`/`fmt` con 1.6.6 pasan. **No validado:** que el juego arranque y acepte conexiones con 8 GB, que se logre conectar desde el cliente y el comportamiento del resize por Terraform.
+
+**Riesgos y decisiones pendientes:**
+- Un cambio de `instance_type` por Terraform apaga la instancia; el `apply` no debe coincidir con jugadores conectados.
+- El cambio del heap en el script no altera la instancia existente: hay que editar `ProjectZomboid64.json` a mano o reemplazar la instancia (perdiendo el mundo).
+- Sigue sin haber backups del mundo.
+- El AutoStop por CPU no distingue jugadores; con el juego corriendo puede apagarlo con gente conectada y quietos.
+

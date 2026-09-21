@@ -58,6 +58,14 @@ if [[ ! -x "${GAME_DIR}/ProjectZomboid64" ]]; then
 fi
 chmod +x "${GAME_DIR}/ProjectZomboid64"
 
+# install -d creates the parent of Saves/Mods/logs as root, and the service runs as steam.
+chown -R steam:steam "${DATA_DIR}"
+
+# JVM heap: 75% of the instance RAM (max 8 GB), instead of a value tuned for a tiny instance.
+total_mb="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)"
+heap_mb=$((total_mb * 3 / 4))
+if ((heap_mb > 8192)); then heap_mb=8192; fi
+
 unzip -p "${GAME_DIR}/java/projectzomboid.jar" \
 	org/sqlite/native/Linux/x86_64/libsqlitejdbc.so \
 	> "${GAME_DIR}/linux64/libsqlitejdbc.so"
@@ -67,7 +75,7 @@ sed -i \
 	-e 's#"java/\."#"/home/steam/zomboid/java/."#' \
 	-e 's#"java/projectzomboid\.jar"#"/home/steam/zomboid/java/projectzomboid.jar"#' \
 	-e 's#-Djava\.library\.path=linux64/#-Djava.library.path=/home/steam/zomboid/linux64/#' \
-	-e 's/-Xmx8g/-Xmx1536m/' \
+	-e "s/-Xmx8g/-Xmx${heap_mb}m/" \
 	"${GAME_DIR}/ProjectZomboid64.json"
 
 umask 077
@@ -92,7 +100,6 @@ DATA_DIR="/home/steam/zomboid-data"
 
 source "${GAME_DIR}/server.env"
 mkdir -p "${DATA_DIR}/Saves" "${DATA_DIR}/Mods" "${DATA_DIR}/logs"
-chown -R steam:steam "${DATA_DIR}"
 cd "${GAME_DIR}"
 export LD_LIBRARY_PATH="${GAME_DIR}:${GAME_DIR}/linux64:${GAME_DIR}/linux32:${LD_LIBRARY_PATH:-}"
 export PATH="/usr/lib/jvm/java-17-openjdk-amd64/bin:${PATH}"
