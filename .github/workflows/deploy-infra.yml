@@ -4,11 +4,21 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "infra/**"
+      - "!infra/CDK/**"
+      - "lambdas/**"
+      - "scripts/ec2-user-data.sh"
+      - ".github/workflows/deploy-infra.yml"
   workflow_dispatch:
 
 permissions:
   id-token: write
   contents: read
+
+concurrency:
+  group: terraform-deploy
+  cancel-in-progress: false
 
 jobs:
   terraform-apply:

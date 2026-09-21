@@ -53,8 +53,10 @@ AwsInstancesBot/
 git clone https://github.com/CandeGP/AwsInstancesBot.git
 cd AwsInstancesBot
 cp .env.example .env
-docker-compose up --build
+docker compose -f docker/docker-compose.yml up --build -d
 ```
+
+El contenedor queda corriendo en segundo plano (`restart: unless-stopped`), por lo que el bot se mantiene activo sin tener que ejecutarlo manualmente en cada sesión. Para ver logs: `docker compose -f docker/docker-compose.yml logs -f`. Para detenerlo: `docker compose -f docker/docker-compose.yml down`.
 
 > Nunca subas el archivo `.env` al repositorio. Usa AWS Secrets Manager para los secretos de producción.
 

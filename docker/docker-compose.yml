@@ -1,0 +1,12 @@
+name: aws-instances-bot
+
+services:
+  bot:
+    container_name: aws-instances-bot
+    image: aws-instances-bot:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    env_file:
+      - ../.env
+    restart: unless-stopped

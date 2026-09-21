@@ -153,6 +153,14 @@ resource "aws_instance" "game_server" {
     Role     = "game-server"
     AutoStop = tostring(var.auto_stop_enabled)
   }
+
+  # data.aws_ami.ubuntu usa most_recent: cuando Canonical publica una AMI nueva,
+  # un cambio de `ami` reemplazaria la instancia y borraria el mundo del juego.
+  # user_data solo corre en el primer arranque, asi que editarlo no debe tocar
+  # una instancia existente.
+  lifecycle {
+    ignore_changes = [ami, user_data]
+  }
 }
 
 resource "aws_iam_role" "automation" {
