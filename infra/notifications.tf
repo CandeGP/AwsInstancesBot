@@ -7,13 +7,14 @@
 # stores it as a SecureString through PUT /config/notifications (see control_api.tf).
 # Manual fallback:
 #
-#   aws ssm put-parameter --name /aws-instances-bot/discord-webhook-url \
+#   aws ssm put-parameter --name /discord-bot/aws-instances-bot/webhook-url \
 #     --type SecureString --value "https://discord.com/api/webhooks/..." --overwrite
 #
 # Until the parameter exists the notifier logs a warning and sends nothing.
 
 locals {
-  webhook_param_name = "/${var.project_name}/discord-webhook-url"
+  # SSM reserves names starting with "aws" or "ssm", so the project name cannot be the first segment.
+  webhook_param_name = "/discord-bot/${var.project_name}/webhook-url"
   webhook_param_arn  = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter${local.webhook_param_name}"
   instance_arn       = "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:instance/${aws_instance.game_server.id}"
 }

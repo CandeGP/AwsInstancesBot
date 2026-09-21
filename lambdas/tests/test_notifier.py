@@ -10,7 +10,7 @@ import urllib.error
 from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "notifier"))
-os.environ["WEBHOOK_PARAM_NAME"] = "/aws-instances-bot/discord-webhook-url"
+os.environ["WEBHOOK_PARAM_NAME"] = "/discord-bot/aws-instances-bot/webhook-url"
 
 from notifier import handler  # noqa: E402
 from notifier import messages  # noqa: E402
@@ -182,6 +182,19 @@ class WebhookTests(unittest.TestCase):
         with mock.patch("boto3.client") as client:
             client.return_value.get_parameter.side_effect = error
             self.assertFalse(webhook.send("hola"))
+
+
+class ParameterNameTests(unittest.TestCase):
+    def test_terraform_parameter_name_is_not_reserved_by_ssm(self):
+        # SSM rejects names starting with "aws" or "ssm" (case-insensitive) with
+        # "No access to reserved parameter name", which looks like an IAM problem.
+        import re
+
+        path = os.path.join(os.path.dirname(__file__), "..", "..", "infra", "notifications.tf")
+        with open(path, encoding="utf-8") as tf:
+            name = re.search(r'webhook_param_name\s*=\s*"([^"]+)"', tf.read()).group(1)
+        self.assertTrue(name.startswith("/"))
+        self.assertFalse(name.lstrip("/").lower().startswith(("aws", "ssm")), name)
 
 
 if __name__ == "__main__":

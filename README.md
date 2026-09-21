@@ -108,7 +108,7 @@ Se configura **desde Discord**, sin tocar AWS ni GitHub: un administrador ejecut
 Alternativa manual (sin el bot):
 
 ```bash
-aws ssm put-parameter --name /aws-instances-bot/discord-webhook-url \
+aws ssm put-parameter --name /discord-bot/aws-instances-bot/webhook-url \
   --type SecureString --value "https://discord.com/api/webhooks/..." --overwrite
 ```
 

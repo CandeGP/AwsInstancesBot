@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "server_control"))
 os.environ["INSTANCE_ID"] = "i-0123456789abcdef0"
-os.environ["WEBHOOK_PARAM_NAME"] = "/aws-instances-bot/discord-webhook-url"
+os.environ["WEBHOOK_PARAM_NAME"] = "/discord-bot/aws-instances-bot/webhook-url"
 
 from server_control import config_service  # noqa: E402
 from server_control import ec2_service  # noqa: E402
@@ -165,7 +165,7 @@ class ConfigTests(unittest.TestCase):
             self.ssm.calls,
             [
                 {
-                    "Name": "/aws-instances-bot/discord-webhook-url",
+                    "Name": "/discord-bot/aws-instances-bot/webhook-url",
                     "Value": WEBHOOK,
                     "Type": "SecureString",
                     "Overwrite": True,
