@@ -66,3 +66,32 @@
 - `apply -auto-approve` sigue activo por decisión explícita; no hay backups del mundo del juego.
 
 **Próximo criterio de aceptación:** Fase 3, empezando por el endpoint de solo lectura `GET /status` (ver diseño acordado en la conversación: Discord bot → API Gateway → Lambda Python → EC2).
+
+## 2026-09-21 — Fase 3: cadena bot → API Gateway → Lambda → EC2
+
+**Contexto:** con la Fase 2 cerrada, se implementó el flujo de control del servidor desde Discord. Antes, `/status` solo mostraba la latencia del bot y no existía ninguna conexión con AWS.
+
+**Estado nuevo:**
+- `lambdas/server_control/` (Python 3.12): `handler.py` enruta las peticiones de API Gateway y `ec2_service.py` contiene la lógica (consultar estado, encender, apagar). Las operaciones son idempotentes: encender un servidor encendido no falla y responde `changed: false`; si la instancia está en transición (`stopping`, `pending`) responde 409.
+- `infra/control_api.tf`: Lambda con rol propio de mínimo privilegio (`StartInstances`/`StopInstances` restringidos al ARN de la instancia, `DescribeInstances` sin restricción porque AWS no lo permite), log group con retención de 14 días, API REST en API Gateway con rutas `GET /server`, `POST /server/start` y `POST /server/stop`, API key obligatoria, usage plan (5 req/s, ráfaga 10, 1000 req/día) y stage `v1`. El ID de la instancia se inyecta a la Lambda como `INSTANCE_ID`.
+- `infra/outputs.tf`: `server_api_url`, `server_api_key` (sensible) y `server_control_lambda_name`.
+- Bot: `src/lib/serverApi.ts` (cliente HTTP con timeout y errores legibles), `src/lib/serverAction.ts` (permisos por rol y flujo común de respuesta), comandos `/startserver` y `/stopserver` nuevos, y `/status` ahora incluye el estado del servidor (sigue respondiendo aunque la API falle).
+- Permisos: solo administradores del servidor de Discord o roles en `ADMIN_ROLE_IDS` pueden encender o apagar; `/status` es público.
+- `.env.example`, `README.md` (comandos y conexión con AWS) y `docs/architecture.md` (API Gateway en los diagramas) actualizados.
+
+**Archivos modificados:** `lambdas/server_control/handler.py`, `lambdas/server_control/ec2_service.py`, `lambdas/tests/test_server_control.py`, `infra/control_api.tf`, `infra/outputs.tf`, `src/lib/serverApi.ts`, `src/lib/serverAction.ts`, `src/app/commands/startserver.ts`, `src/app/commands/stopserver.ts`, `src/app/commands/status.ts`, `.env.example`, `README.md`, `docs/architecture.md`, `docs/progress-log.md`.
+
+**Validación:**
+- 12 pruebas unitarias de la Lambda con un cliente EC2 falso (`python -m unittest discover -s lambdas/tests -t lambdas -v`): pasan.
+- `terraform validate` y `terraform fmt -check` pasan con Terraform 1.6.6 (la versión del workflow), ejecutados en un contenedor Docker. En esta máquina `terraform validate` falla en local porque el antivirus (Norton) intercepta el TLS entre Terraform y sus plugins (`x509: certificate signed by unknown authority`); es la misma causa que rompió `git push`.
+- `tsc --noEmit` y `npm run build` pasan. El cliente HTTP se probó contra un servidor simulado (200, 409, 403 y falta de configuración).
+- **No validado:** `terraform plan/apply` (requiere credenciales y backend S3), la Lambda desplegada y los comandos en Discord real.
+
+**Riesgos y decisiones pendientes:**
+- El push a `main` dispara `terraform apply -auto-approve` y crea la API, la Lambda y la API key. Revisar en Actions que el plan no toque `aws_instance.game_server`.
+- La API key es un secreto compartido único: quien la tenga puede encender o apagar el servidor sin pasar por Discord. Vive en el estado de Terraform (S3, cifrado) y en el `.env` del bot. Rotarla si se filtra (`terraform apply -replace=aws_api_gateway_api_key.bot`).
+- La autorización por rol se valida solo en el bot; la API no distingue usuarios. Suficiente para un solo bot de confianza, insuficiente si se abre la API a otros clientes.
+- La IP pública cambia en cada arranque (sin Elastic IP); `/status` la muestra mientras el servidor está encendido.
+- `/upgrade` queda fuera: falta decidir cómo manejar el drift del tipo de instancia con Terraform (ver entrada anterior). Tampoco hay aún notificaciones automáticas a Discord (SNS/webhooks) ni cooldown por jugadores.
+
+**Próximo criterio de aceptación:** tras el despliegue, copiar `server_api_url` y `server_api_key` al `.env`, reiniciar el contenedor (`docker compose -f docker/docker-compose.yml up --build -d`) y confirmar en Discord que `/status` muestra el estado real, que `/startserver` lo enciende, que `/stopserver` lo apaga y que un usuario sin rol recibe el mensaje de permisos.

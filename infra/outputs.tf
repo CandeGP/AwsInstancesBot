@@ -18,3 +18,19 @@ output "auto_stop_lambda_name" {
   value       = aws_lambda_function.auto_stop.function_name
 }
 
+
+output "server_api_url" {
+  description = "Base URL of the server control API (use as SERVER_API_URL in the bot)."
+  value       = aws_api_gateway_stage.server_control.invoke_url
+}
+
+output "server_api_key" {
+  description = "API key for the server control API (use as SERVER_API_KEY in the bot). Read with: terraform output -raw server_api_key"
+  value       = aws_api_gateway_api_key.bot.value
+  sensitive   = true
+}
+
+output "server_control_lambda_name" {
+  description = "Name of the server control Lambda."
+  value       = aws_lambda_function.server_control.function_name
+}

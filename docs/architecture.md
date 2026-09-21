@@ -9,7 +9,8 @@ flowchart TD
 	user([Usuario en Discord]) --> bot[Bot de Discord]
 	bot --> command{Comando válido?}
 	command -- No --> error[Respuesta de error]
-	command -- Sí --> lambda[AWS Lambda]
+	command -- Sí --> apigw[API Gateway]
+	apigw --> lambda[AWS Lambda]
 	lambda --> ec2[Servidor de juego en EC2]
 	ec2 --> database[(RDS / DynamoDB)]
 	ec2 --> metrics[CloudWatch]
@@ -28,6 +29,7 @@ flowchart TD
 sequenceDiagram
 	actor Usuario
 	participant Bot as Bot de Discord
+	participant API as API Gateway
 	participant Lambda as AWS Lambda
 	participant EC2 as Servidor EC2
 	participant BD as RDS / DynamoDB
@@ -35,11 +37,13 @@ sequenceDiagram
 	participant SNS as SNS / Discord
 
 	Usuario->>Bot: Envía un comando
-	Bot->>Lambda: Procesa la solicitud
+	Bot->>API: Solicitud HTTPS con x-api-key
+	API->>Lambda: Invoca la función
 	Lambda->>EC2: Inicia, detiene o configura el servidor
 	EC2->>BD: Consulta o actualiza el estado
 	EC2-->>Lambda: Devuelve el resultado
-	Lambda-->>Bot: Devuelve el estado de la operación
+	Lambda-->>API: Devuelve el estado de la operación
+	API-->>Bot: Respuesta JSON
 	Bot-->>Usuario: Confirma la operación
 	EC2->>CW: Registra métricas y logs
 	CW->>SNS: Envía una alerta si supera los límites

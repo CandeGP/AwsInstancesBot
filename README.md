@@ -76,11 +76,22 @@ El contenedor queda corriendo en segundo plano (`restart: unless-stopped`), por 
 
 | Comando | Descripción |
 | --- | --- |
-| `/startserver` | Crea o inicia una instancia EC2 con el juego configurado. |
-| `/stopserver` | Detiene la instancia y guarda el estado. |
-| `/status` | Muestra el estado actual del servidor. |
+| `/startserver` | Enciende la instancia EC2 del juego. Solo administradores o roles en `ADMIN_ROLE_IDS`. |
+| `/stopserver` | Apaga la instancia EC2. Solo administradores o roles en `ADMIN_ROLE_IDS`. |
+| `/status` | Muestra el estado del bot y del servidor (estado, tipo de instancia, IP y puerto). |
 | `/stats` | Reporta rendimiento y costos estimados. |
 | `/upgrade` | Cambia el tipo de instancia, por ejemplo `t3.micro` a `t4.large`. |
+
+### Conexión del bot con AWS
+
+Flujo: **Discord → bot → API Gateway → Lambda (Python) → EC2**. Las rutas (`GET /server`, `POST /server/start`, `POST /server/stop`) requieren el header `x-api-key`. Tras el despliegue de Terraform, configura el bot con:
+
+```bash
+terraform -chdir=infra output -raw server_api_url   # SERVER_API_URL
+terraform -chdir=infra output -raw server_api_key   # SERVER_API_KEY
+```
+
+Agrega ambos valores a `.env`, junto con `ADMIN_ROLE_IDS` (IDs de roles separados por coma; los administradores del servidor de Discord siempre pueden). Los tests de la Lambda se ejecutan con `python -m unittest discover -s lambdas/tests -t lambdas -v`.
 
 ## Monitoreo y control de costos
 
