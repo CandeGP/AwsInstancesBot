@@ -13,4 +13,5 @@ lambdas/*.zip
 tfplan
 __pycache__/
 cdk.out/
-cdk.context.json.claude/
+cdk.context.json
+.claude/
