@@ -7,6 +7,7 @@
     "dev": "commandkit dev",
     "build": "commandkit build",
     "start": "commandkit start",
+    "release": "npm run build && node scripts/build-release.mjs",
     "infra:synth": "cdk synth --app \"npx ts-node --project infra/CDK/tsconfig.json --prefer-ts-exts infra/CDK/bin/infra.ts\"",
     "infra:diff": "cdk diff --app \"npx ts-node --project infra/CDK/tsconfig.json --prefer-ts-exts infra/CDK/bin/infra.ts\"",
     "infra:deploy": "cdk deploy --app \"npx ts-node --project infra/CDK/tsconfig.json --prefer-ts-exts infra/CDK/bin/infra.ts\" --require-approval never",

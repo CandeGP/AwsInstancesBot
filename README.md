@@ -60,6 +60,24 @@ El contenedor queda corriendo en segundo plano (`restart: unless-stopped`), por 
 
 > Nunca subas el archivo `.env` al repositorio. Usa AWS Secrets Manager para los secretos de producción.
 
+### Desplegar solo el build (sin el código fuente), por ejemplo en un NAS
+
+Si quieres correr el bot en otra máquina que no debe tener el código fuente ni las dependencias de desarrollo (por ejemplo un NAS con Docker), compílalo aquí y copia solo el resultado:
+
+```bash
+npm run release
+```
+
+Esto compila el bot y arma una carpeta `release/` autocontenida con `dist/`, `package.json`, `package-lock.json` y los archivos de Docker (`docker/Dockerfile`, `docker/docker-compose.yml`). Copia esa carpeta completa a la otra máquina (`scp -r release/ usuario@nas:/ruta/aws-instances-bot`, `rsync`, o arrastrándola por la interfaz del NAS), agrega ahí un `.env` junto a `package.json` y corre el mismo comando de siempre:
+
+```bash
+docker compose -f docker/docker-compose.yml up --build -d
+```
+
+- Apaga o elimina el contenedor de la máquina anterior antes de levantar el del NAS: dos instancias del bot conectadas a la vez con el mismo token de Discord pueden interferir entre sí.
+- Confirma la arquitectura del NAS (`uname -m`) y su versión de `docker compose` antes de copiar; la imagen (`node:20-alpine`) soporta tanto x86_64 como ARM64.
+- `release/` es una carpeta generada (está en `.gitignore`); se puede borrar y regenerar en cualquier momento con `npm run release`.
+
 ## Servicios de AWS
 
 | Servicio | Responsabilidad |

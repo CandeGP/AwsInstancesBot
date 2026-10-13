@@ -1,6 +1,7 @@
 node_modules/
 .env
 dist/
+release/
 .commandkit/
 .terraform/
 *.tfstate
@@ -12,4 +13,4 @@ lambdas/*.zip
 tfplan
 __pycache__/
 cdk.out/
-cdk.context.json
+cdk.context.json.claude/

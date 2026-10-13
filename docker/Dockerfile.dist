@@ -1,0 +1,13 @@
+# Imagen para desplegar un build ya compilado (ver `npm run release`), en vez de compilar
+# dentro del contenedor. Pensada para usarse con el contexto de la carpeta `release/`
+# generada por ese script, no con la raiz del repositorio (ahi `dist/` esta en .dockerignore).
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+COPY dist ./dist
+
+CMD ["npm", "start"]
