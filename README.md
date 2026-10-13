@@ -141,6 +141,7 @@ El flujo de entrega utiliza las siguientes herramientas:
 
 ##  Documentación adicional
 
+- [`docs/onboarding.md`](docs/onboarding.md): acceso a AWS, Terraform y pruebas para quien se incorpora al proyecto.
 - [`docs/architecture.md`](docs/architecture.md): diagramas y flujo de datos.
 - [`docs/generalRoadmap.md`](docs/generalRoadmap.md): Vistazo de el flujo de trabajo que se presentara.
 - [`docs/requirements.md`](docs/requirements.md): Requerimientos funcionales y no funcionales del proyecto.
